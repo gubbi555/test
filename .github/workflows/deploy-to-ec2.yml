@@ -1,0 +1,47 @@
+name: Deploy App to EC2 via Zip
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      EC2_HOST: 65.2.83.156         # 🔁 Replace with your EC2 Public IP / DNS
+      EC2_USER: ec2-user
+      PEM_FILE: new-account.pem
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Create zip of app folder
+      run: |
+        mkdir -p dist
+        TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
+        ZIP_NAME="myapp_$TIMESTAMP.zip"
+        echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+        zip -r dist/$ZIP_NAME server.js package.json public/
+        echo "Created zip: $ZIP_NAME"
+
+    - name: Setup SSH access
+      run: |
+        mkdir -p ~/.ssh
+        cp ./secrets/$PEM_FILE ~/.ssh/$PEM_FILE
+        chmod 400 ~/.ssh/$PEM_FILE
+        ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
+
+    - name: Copy zip to EC2
+      run: |
+        scp -i ~/.ssh/$PEM_FILE dist/$ZIP_NAME $EC2_USER@$EC2_HOST:/home/$EC2_USER/
+
+    - name: SSH into EC2 and unzip app
+      run: |
+        ssh -i ~/.ssh/$PEM_FILE $EC2_USER@$EC2_HOST << EOF
+          mkdir -p /home/ubuntu/html
+          unzip -o "/home/$EC2_USER/$ZIP_NAME" -d /home/ubuntu/html/
+          echo "Unzipped $ZIP_NAME into /home/ubuntu/html/"
+        EOF
