@@ -1,16 +1,15 @@
-name: Deploy App to EC2 via Zip
+name: Deploy App to EC2 (Amazon Linux)
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     env:
-      EC2_HOST: 65.2.83.156         # 🔁 Replace with your EC2 Public IP / DNS
+      EC2_HOST: 65.2.83.156           # Replace with your EC2 public IP or DNS
       EC2_USER: ec2-user
       PEM_FILE: new-account.pem
 
@@ -18,16 +17,18 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Create zip of app folder
+    - name: Zip contents of my-app folder
       run: |
         mkdir -p dist
         TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
         ZIP_NAME="myapp_$TIMESTAMP.zip"
         echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
-        zip -r dist/$ZIP_NAME server.js package.json public/
+        cd my-app
+        zip -r ../dist/$ZIP_NAME . -x "*.git*" "*.github*"
+        cd ..
         echo "Created zip: $ZIP_NAME"
 
-    - name: Setup SSH access
+    - name: Set up SSH
       run: |
         mkdir -p ~/.ssh
         cp ./secrets/$PEM_FILE ~/.ssh/$PEM_FILE
@@ -38,10 +39,11 @@ jobs:
       run: |
         scp -i ~/.ssh/$PEM_FILE dist/$ZIP_NAME $EC2_USER@$EC2_HOST:/home/$EC2_USER/
 
-    - name: SSH into EC2 and unzip app
+    - name: SSH and unzip on EC2
       run: |
         ssh -i ~/.ssh/$PEM_FILE $EC2_USER@$EC2_HOST << EOF
-          mkdir -p /home/ubuntu/html
-          unzip -o "/home/$EC2_USER/$ZIP_NAME" -d /home/ubuntu/html/
-          echo "Unzipped $ZIP_NAME into /home/ubuntu/html/"
+          TIMESTAMP_DIR="/home/$EC2_USER/html/deploy_\$(date +'%Y-%m-%d_%H-%M-%S')"
+          mkdir -p \$TIMESTAMP_DIR
+          unzip -o "/home/$EC2_USER/$ZIP_NAME" -d \$TIMESTAMP_DIR
+          echo "Unzipped $ZIP_NAME into \$TIMESTAMP_DIR"
         EOF
